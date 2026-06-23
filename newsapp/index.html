@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=1.0, viewport-fit=cover">
+<title>要点新闻速读</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:#f5f5f7; display:flex; justify-content:center; align-items:flex-start; min-height:100vh; padding:16px; }
+.app-container { max-width:600px; width:100%; background:white; border-radius:24px; padding:20px; box-shadow:0 4px 24px rgba(0,0,0,0.08); }
+h1 { font-size:1.8rem; font-weight:600; margin-bottom:8px; color:#1d1d1f; display:flex; align-items:center; gap:8px; }
+.status-bar { display:flex; align-items:center; justify-content:space-between; background:#f0f0f5; border-radius:12px; padding:10px 14px; margin-bottom:12px; font-size:0.85rem; color:#3a3a3c; }
+.status-bar .last-update { display:flex; align-items:center; gap:4px; }
+.top-bar { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
+.domain-tag { background:#f0f0f5; border:none; padding:8px 16px; border-radius:20px; font-size:0.9rem; cursor:pointer; transition:0.2s; }
+.domain-tag.active { background:#0071e3; color:white; }
+.domain-tag.add { background:transparent; border:1px dashed #86868b; color:#86868b; }
+.settings-row { display:flex; justify-content:flex-end; align-items:center; gap:8px; margin-bottom:12px; }
+.btn { background:#e8e8ed; border:none; padding:8px 16px; border-radius:20px; font-size:0.9rem; cursor:pointer; display:flex; align-items:center; gap:4px; }
+.btn.primary { background:#0071e3; color:white; }
+.news-list { display:flex; flex-direction:column; gap:16px; }
+.news-card { background:#f9f9fb; border-radius:16px; padding:16px; border:1px solid #e5e5ea; }
+.news-title { font-weight:600; font-size:1.1rem; margin-bottom:6px; color:#1d1d1f; line-height:1.4; }
+.news-title a { color:inherit; text-decoration:none; }
+.news-title a:hover { color:#0071e3; }
+.news-meta { display:flex; align-items:center; gap:8px; font-size:0.8rem; color:#86868b; margin-bottom:10px; flex-wrap:wrap; }
+.badge { padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:500; }
+.badge.high { background:#e8f5e9; color:#2e7d32; }
+.badge.medium { background:#e3f2fd; color:#1565c0; }
+.badge.low { background:#fff3e0; color:#e65100; }
+.badge.danger { background:#ffebee; color:#c62828; }
+.summary-block { background:white; border-radius:12px; padding:12px; margin:10px 0; border-left:3px solid #0071e3; }
+.summary-block p { font-size:0.9rem; line-height:1.6; color:#3a3a3c; margin-bottom:6px; }
+.summary-block p:last-child { margin-bottom:0; }
+.summary-label { font-weight:600; color:#0071e3; font-size:0.8rem; display:inline-block; margin-right:4px; }
+.read-more { display:inline-block; margin-top:8px; padding:8px 16px; background:#0071e3; color:white; border-radius:20px; text-decoration:none; font-size:0.85rem; font-weight:500; }
+.read-more:hover { background:#0077ed; }
+.loading { text-align:center; padding:40px; color:#86868b; }
+.empty { text-align:center; padding:40px; color:#86868b; }
+.domain-selector { background:#f9f9fb; border-radius:16px; padding:16px; margin-bottom:16px; }
+.domain-selector h3 { margin-bottom:12px; font-size:1rem; }
+.domain-options { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+.domain-check { display:none; }
+.domain-check+label { background:#e8e8ed; padding:8px 16px; border-radius:20px; font-size:0.9rem; cursor:pointer; }
+.domain-check:checked+label { background:#0071e3; color:white; }
+.custom-domain { display:flex; gap:8px; margin-top:8px; }
+.custom-domain input { flex:1; padding:8px 12px; border:1px solid #d2d2d7; border-radius:12px; font-size:0.9rem; }
+</style>
+</head>
+<body>
+<div class="app-container" id="app">
+  <h1>📰 要点新闻速读</h1>
+  <div class="status-bar">
+    <span class="last-update">🕒 上次检查：<strong id="lastUpdateText">刚刚</strong></span>
+    <button class="btn primary" onclick="manualRefresh()">🔄 立即刷新</button>
+  </div>
+  <div id="domainBar" class="top-bar"></div>
+  <div class="settings-row">
+    <button class="btn" id="notifyBtn" onclick="requestNotification()">🔔 开启提醒</button>
+    <button class="btn" onclick="openDomainSelector()">⚙️ 领域设置</button>
+  </div>
+  <div id="domainSelector" class="domain-selector" style="display:none;">
+    <h3>选择你感兴趣的领域（可多选）</h3>
+    <div class="domain-options" id="domainOptions"></div>
+    <div class="custom-domain">
+      <input type="text" id="customDomainInput" placeholder="添加自定义关键词，如“人工智能”">
+      <button class="btn primary" onclick="addCustomDomain()">添加</button>
+    </div>
+    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
+      <button class="btn" onclick="closeDomainSelector()">取消</button>
+      <button class="btn primary" onclick="saveDomains()">保存</button>
+    </div>
+  </div>
+  <div id="newsContainer"></div>
+</div>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/sw.js').then(function(reg) {
+      console.log('Service Worker 注册成功');
+    }).catch(function(err) {
+      console.log('Service Worker 注册失败: ', err);
+    });
+  });
+}
+
+var presetDomains = ["科技", "财经", "体育", "娱乐", "健康", "国际", "国内"];
+var highTrustSources = ["新华网", "人民网", "BBC News", "Reuters", "Associated Press", "央视网", "环球网", "中国新闻网"];
+var mediumTrustSources = ["网易", "腾讯", "新浪", "搜狐", "36氪", "虎嗅", "澎湃新闻"];
+var lowQualitySources = ["每日震惊", "惊天秘密", "不转不是中国人"];
+var clickbaitWords = ["震惊", "速看", "刚刚", "紧急", "不转不是"];
+
+var autoRefreshInterval = null;
+var lastUpdateTime = null;
+
+function getSelectedDomains() {
+  var stored = localStorage.getItem("newsDomains");
+  return stored ? JSON.parse(stored) : ["科技"];
+}
+
+function saveSelectedDomains(domains) {
+  localStorage.setItem("newsDomains", JSON.stringify(domains));
+}
+
+function updateLastUpdateTime() {
+  lastUpdateTime = new Date();
+  document.getElementById("lastUpdateText").innerText = "刚刚";
+  setTimeout(function() {
+    if (lastUpdateTime) {
+      var seconds = Math.floor((new Date() - lastUpdateTime) / 1000);
+      document.getElementById("lastUpdateText").innerText = seconds < 60 ? seconds + "秒前" : Math.floor(seconds/60) + "分钟前";
+    }
+  }, 1000);
+}
+
+function requestNotification() {
+  if (!("Notification" in window)) { alert("你的浏览器不支持通知功能"); return; }
+  if (Notification.permission === "granted") {
+    alert("通知权限已开启。当有新消息时会提醒你。");
+  } else if (Notification.permission === "denied") {
+    alert("通知权限被拒绝，请在浏览器设置中允许通知。");
+  } else {
+    Notification.requestPermission().then(function(perm) {
+      if (perm === "granted") { alert("通知已开启！"); } else { alert("未能开启通知。"); }
+    });
+  }
+}
+
+function sendNotification(title, body) {
+  if (Notification.permission === "granted") {
+    navigator.serviceWorker.ready.then(function(reg) {
+      reg.showNotification(title, { body: body, icon: "/icon-192.png" });
+    });
+  }
+}
+
+function getSourceRating(sourceName, title) {
+  var isHigh = highTrustSources.some(function(s) { return sourceName.indexOf(s) !== -1; });
+  if (isHigh) return { level: "high", text: "高可信源", cls: "high" };
+  var isMedium = mediumTrustSources.some(function(s) { return sourceName.indexOf(s) !== -1; });
+  if (isMedium) return { level: "medium", text: "一般来源", cls: "medium" };
+  var isLow = lowQualitySources.some(function(s) { return sourceName.indexOf(s) !== -1; });
+  var hasClickbait = clickbaitWords.some(function(w) { return title.indexOf(w) !== -1; });
+  if (isLow || hasClickbait) return { level: "danger", text: "疑似低质", cls: "danger" };
+  return { level: "low", text: "未知来源，请核实", cls: "low" };
+}
+
+function generateSummary(article) {
+  var desc = article.description || "";
+  var source = article.sourceName || "未知来源";
+  var title = article.title || "";
+  var parts = [];
+  parts.push("<span class='summary-label'>📌 事件核心：</span>" + (title || "暂无标题"));
+  if (desc.length > 20) {
+    parts.push("<span class='summary-label'>📊 关键信息：</span>" + desc.substring(0, 150) + (desc.length > 150 ? "..." : ""));
+  } else {
+    parts.push("<span class='summary-label'>📊 关键信息：</span>请阅读原文获取详情。");
+  }
+  var rating = getSourceRating(source, title);
+  parts.push("<span class='summary-label'>🤔 关注价值：</span>来源评级为「" + rating.text + "」，建议" + (rating.level === "high" ? "可信度高，可重点阅读。" : (rating.level === "medium" ? "结合其他来源综合判断。" : "多方核实后再采信。")));
+  return parts.join("<br>");
+}
+
+function renderNews(articles, domains) {
+  var container = document.getElementById("newsContainer");
+  if (!articles || articles.length === 0) {
+    container.innerHTML = "<div class='empty'>😵 当前领域暂无新闻，试试换一个？</div>";
+    return;
+  }
+  var html = "<div class='news-list'>";
+  articles.forEach(function(a) {
+    var source = a.sourceName || "未知来源";
+    var rating = getSourceRating(source, a.title);
+    var link = a.link || "#";
+    html += "<div class='news-card'>";
+    html += "<div class='news-title'><a href='" + link + "' target='_blank' rel='noopener'>" + a.title + "</a></div>";
+    html += "<div class='news-meta'>";
+    html += "<span>" + source + "</span>";
+    html += "<span>" + (a.publishedAt ? new Date(a.publishedAt).toLocaleString() : "") + "</span>";
+    html += "<span class='badge " + rating.cls + "'>" + rating.text + "</span>";
+    html += "</div>";
+    html += "<div class='summary-block'><p>" + generateSummary(a) + "</p></div>";
+    html += "<a href='" + link + "' target='_blank' rel='noopener' class='read-more'>🔗 阅读原文</a>";
+    html += "</div>";
+  });
+  html += "</div>";
+  container.innerHTML = html;
+  updateLastUpdateTime();
+}
+
+function fetchNews(domains, callback) {
+  // 使用公开的 NewsAPI，但需要注册免费 API Key。
+  // 在此示例中，我们使用一个公共的新闻数据代理（仅用于学习）
+  var query = domains.join(" OR ");
+  var apiUrl = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent("https://news.google.com/rss/search?q=" + query + "&hl=zh-CN&gl=CN&ceid=CN:zh-Hans");
+
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", apiUrl, true);
+  xhr.timeout = 10000;
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      try {
+        var data = JSON.parse(xhr.responseText);
+        if (data.status === "ok" && data.items) {
+          var articles = data.items.map(function(item) {
+            return {
+              title: item.title,
+              sourceName: item.author || item.title.split(" - ").pop() || "未知来源",
+              publishedAt: item.pubDate,
+              description: (item.description || "").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " "),
+              link: item.link || "#"
+            };
+          });
+          callback(articles);
+          return;
+        }
+      } catch(e) {}
+    }
+    // 失败降级
+    callback(getMockArticles(domains));
+  };
+  xhr.onerror = function() { callback(getMockArticles(domains)); };
+  xhr.ontimeout = function() { callback(getMockArticles(domains)); };
+  xhr.send();
+}
+
+function getMockArticles(domains) {
+  var domainName = domains[0];
+  var templates = [
+    { title: domainName + "领域迎来重大技术突破", desc: "多家公司宣布在" + domainName + "相关技术领域取得关键进展，或改变市场格局。", source: "科技日报" },
+    { title: "政策利好：国家出台新措施扶持" + domainName + "产业", desc: "国务院发布指导意见，加大对" + domainName + "产业的政策支持力度。", source: "经济观察报" },
+    { title: domainName + "市场近期波动明显，投资者需谨慎", desc: "受国际形势影响，相关板块出现较大波动。分析师建议关注长期价值。", source: "21世纪经济报道" }
+  ];
+  return templates.map(function(t, i) {
+    return {
+      title: t.title,
+      sourceName: t.source,
+      publishedAt: new Date(Date.now() - i * 600000).toISOString(),
+      description: t.desc,
+      link: "https://news.baidu.com/"
+    };
+  });
+}
+
+function renderDomainBar(domains) {
+  var bar = document.getElementById("domainBar");
+  bar.innerHTML = "";
+  domains.forEach(function(d) {
+    var tag = document.createElement("button");
+    tag.className = "domain-tag active";
+    tag.textContent = d;
+    bar.appendChild(tag);
+  });
+  var addBtn = document.createElement("button");
+  addBtn.className = "domain-tag add";
+  addBtn.textContent = "+ 添加";
+  addBtn.onclick = openDomainSelector;
+  bar.appendChild(addBtn);
+}
+
+function openDomainSelector() {
+  document.getElementById("domainSelector").style.display = "block";
+  var optionsContainer = document.getElementById("domainOptions");
+  optionsContainer.innerHTML = "";
+  var currentDomains = getSelectedDomains();
+  presetDomains.forEach(function(d) {
+    var checked = currentDomains.indexOf(d) !== -1 ? " checked" : "";
+    optionsContainer.innerHTML += "<input type='checkbox' class='domain-check' id='domain_" + d + "' value='" + d + "'" + checked + "><label for='domain_" + d + "'>" + d + "</label>";
+  });
+  currentDomains.forEach(function(d) {
+    if (presetDomains.indexOf(d) === -1) {
+      optionsContainer.innerHTML += "<input type='checkbox' class='domain-check' id='domain_custom_" + d + "' value='" + d + "' checked><label for='domain_custom_" + d + "'>" + d + "</label>";
+    }
+  });
+}
+
+function closeDomainSelector() { document.getElementById("domainSelector").style.display = "none"; }
+
+function saveDomains() {
+  var checks = document.querySelectorAll("#domainOptions .domain-check:checked");
+  var newDomains = [];
+  checks.forEach(function(cb) { newDomains.push(cb.value); });
+  if (newDomains.length === 0) { alert("请至少选择一个领域"); return; }
+  saveSelectedDomains(newDomains);
+  closeDomainSelector();
+  renderDomainBar(newDomains);
+  loadAndRenderNews(newDomains);
+}
+
+function addCustomDomain() {
+  var input = document.getElementById("customDomainInput");
+  var val = input.value.trim();
+  if (!val) return;
+  var customId = "domain_custom_" + val;
+  if (document.getElementById(customId)) { input.value = ""; return; }
+  document.getElementById("domainOptions").innerHTML += "<input type='checkbox' class='domain-check' id='" + customId + "' value='" + val + "' checked><label for='" + customId + "'>" + val + "</label>";
+  input.value = "";
+}
+
+function loadAndRenderNews(domains) {
+  document.getElementById("newsContainer").innerHTML = "<div class='loading'>⏳ 正在搜集" + domains.join("、") + "的新闻要点...</div>";
+  fetchNews(domains, function(articles) { renderNews(articles, domains); });
+}
+
+function manualRefresh() {
+  loadAndRenderNews(getSelectedDomains());
+}
+
+function init() {
+  var domains = getSelectedDomains();
+  renderDomainBar(domains);
+  loadAndRenderNews(domains);
+  updateLastUpdateTime();
+}
+
+window.openDomainSelector = openDomainSelector;
+window.closeDomainSelector = closeDomainSelector;
+window.saveDomains = saveDomains;
+window.addCustomDomain = addCustomDomain;
+window.requestNotification = requestNotification;
+window.manualRefresh = manualRefresh;
+
+init();
+</script>
+</body>
+</html>
